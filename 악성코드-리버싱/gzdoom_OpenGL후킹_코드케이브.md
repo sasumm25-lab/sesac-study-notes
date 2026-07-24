@@ -1,8 +1,6 @@
 # gzdoom.exe — OpenGL 후킹 & 코드 케이브
 
-교안 p91~102. 크랙미가 아니라 **실행 중인 게임의 그래픽 API 호출을 가로채는(후킹)** 실습이다. 대상은 `Game/Doom2.zip` 안에 압축된 `gzdoom.exe`(GZDoom, Doom2 소스 포트, 2013년 빌드, 3.5MB). 폴더 최상위에 exe가 안 보였던 건 zip 안에 들어있기 때문이다.
-
-> `Doom2.zip` 을 풀면 `gzdoom.exe`, `opengl32.dll`, `QeffectsGL.ini`, `Doom2.wad` 등이 나온다. 이 조합 자체가 실습 세트다.
+교안 p91~102. **실행 중인 게임의 그래픽 API 호출을 가로채는(후킹)** 실습이다. 대상은 GZDoom(Doom2 소스 포트)으로, 코드 케이브 주입과 프록시 DLL 두 가지 후킹 방식을 다룬다.
 
 ## 왜 gzdoom인가 — OpenGL을 쓰는 실제 프로그램
 
