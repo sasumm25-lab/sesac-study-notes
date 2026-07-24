@@ -50,6 +50,7 @@
 | Crackme 시리즈 분석 | [`악성코드-리버싱/03_Crackme_시리즈.md`](악성코드-리버싱/03_Crackme_시리즈.md) |
 | abex' 2nd crackme 상세 분석 | [`악성코드-리버싱/abex_2nd_crackme_분석.md`](악성코드-리버싱/abex_2nd_crackme_분석.md) |
 | headache — 깨진 PE 헤더 복구(플래그 획득) | [`악성코드-리버싱/headache_PE헤더복구.md`](악성코드-리버싱/headache_PE헤더복구.md) |
+| gzdoom — OpenGL 후킹 & 코드 케이브 | [`악성코드-리버싱/gzdoom_OpenGL후킹_코드케이브.md`](악성코드-리버싱/gzdoom_OpenGL후킹_코드케이브.md) |
 | 안티 디버깅 8종 기법 | [`악성코드-리버싱/04_Anti_Debugging.md`](악성코드-리버싱/04_Anti_Debugging.md) |
 | 해시 · 파일 무결성 실습 | [`악성코드-리버싱/05_해시_무결성.md`](악성코드-리버싱/05_해시_무결성.md) |
 
