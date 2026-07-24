@@ -64,12 +64,65 @@ gzdoom의 `.text` 섹션은 `0x6DDEF2`에서 끝난다. 그 바로 뒤 **`0x6DDF
 
 즉 같은 "OpenGL 후킹"을 **① 코드 케이브 디투어(exe 내부 패치)** 와 **② 프록시 DLL(외부 가로채기)** 두 방식으로 배우는 게 이 실습의 구성이다.
 
-## x32dbg / 실습 절차
+## x32dbg 실습 절차 — glClear 후킹으로 화면 물들이기
 
-1. `gzdoom.exe`를 x32dbg로 로드. GL 함수는 런타임 로드라, 게임이 초기화된 뒤 `glClearColor`/`glClear`의 실제 주소에 BP를 걸어 렌더 루프에서 호출되는지 확인.
-2. 호출 지점 근처에서 코드 케이브(`0x6DDF00`)로 향하는 `jmp` 패치를 작성(스페이스바 어셈블).
-3. 케이브에 `glClearColor` 호출 + 원본 명령 복원 + 복귀 `jmp` 작성.
-4. 실행해 화면 색 변화 확인. 안 되면 인자 순서(OpenGL은 stdcall, 역순 push)와 원본 명령 복원 여부를 점검.
+목표: 매 프레임 화면을 지우는 `glClear` 직전에 `glClearColor(1,0,0,1)`를 끼워 넣어 배경을 빨갛게 만든다.
+
+### 1단계 — glClear 호출부(리턴 주소) 찾기
+
+GZDoom은 GL 함수를 자체 포인터로 호출해서 정적 디스어셈블로는 호출부가 안 잡힌다. **실행 중에 역으로 찾는다.**
+
+1. `gzdoom.exe`를 x32dbg로 열고 `F9`로 게임이 렌더링을 시작할 때까지 실행.
+2. 상단 **Symbols 탭 → `OPENGL32.dll` → `glClear`** 를 찾아 그 시작 주소에 `F2`(BP).
+3. `F9` → 렌더 루프에서 glClear에 진입하며 멈춘다.
+4. 이때 **스택 창 맨 위 값**(또는 `Ctrl+F9`로 함수 리턴까지 실행 후 위치)이 **gzdoom 내부의 호출 리턴 주소**다. 그 주소로 CPU 창을 이동(`Ctrl+G`)하면 `call ...`(glClear 호출) 명령이 보인다. 이 **호출 명령 주소**를 적어둔다. (예시로 `0x5A1234`라 하자.)
+5. glClear의 BP는 해제(다시 F2).
+
+### 2단계 — 코드 케이브(0x6DDF00)에 후킹 코드 작성
+
+CPU 창에서 `Ctrl+G` → `0x6DDF00` 이동 후, 각 줄에서 **스페이스바**로 아래를 순서대로 어셈블한다.
+
+```asm
+0x6DDF00  pushad                      ; 레지스터 전부 보존
+0x6DDF01  pushfd                      ; 플래그 보존
+0x6DDF02  push 3F800000               ; alpha = 1.0  (float 비트패턴)
+0x6DDF07  push 00000000               ; blue  = 0.0
+0x6DDF0C  push 00000000               ; green = 0.0
+0x6DDF11  push 3F800000               ; red   = 1.0
+0x6DDF16  call dword ptr [0x6E035C]   ; glClearColor(red,green,blue,alpha) → 빨강
+0x6DDF1C  popfd                       ; 플래그 복원
+0x6DDF1D  popad                       ; 레지스터 복원
+0x6DDF1E  call dword ptr [0x6E0360]   ; ★ 원래 덮어쓸 glClear 호출을 여기서 대신 실행
+0x6DDF24  jmp  0x5A123A               ; 원래 호출 '다음' 명령으로 복귀
+```
+
+핵심 포인트:
+- **`glClearColor`는 stdcall + float 4개.** 인자는 역순(alpha→blue→green→red) push. float `1.0`의 32비트 비트패턴은 `0x3F800000`, `0.0`은 `0x00000000`이다.
+- **`pushad`/`pushfd` 로 감싼다.** glClearColor가 EAX/ECX/EDX(휘발성 레지스터)를 건드려서 원래 코드 흐름이 깨질 수 있으므로, 주입 호출 전후로 레지스터·플래그를 통째로 보존/복원한다.
+- 9번 줄(`0x6DDF1E`)은 **1단계에서 확인한 원래 glClear 호출 명령을 그대로 복사**한 것이다. (IAT 슬롯이 `[0x6E0360]`이면 위처럼, `call eax` 형태였다면 그 형태 그대로.)
+- 마지막 `jmp`의 목적지 `0x5A123A`는 **원래 호출 명령의 바로 다음 주소**(호출 명령이 6바이트면 `0x5A1234+6`)다.
+
+### 3단계 — 호출부를 케이브로 리다이렉트
+
+1단계에서 찾은 호출 명령(`0x5A1234`)으로 가서 스페이스바로 덮어쓴다.
+
+```asm
+0x5A1234  jmp 0x6DDF00     ; glClear 호출을 코드 케이브로 가로챔
+```
+
+- 원래 명령이 6바이트(`call [mem]`)인데 `jmp rel32`도 5바이트라 1바이트가 남는다. x32dbg 어셈블 창의 **"Fill with NOP's"** 를 켜두면 남는 바이트를 자동으로 `NOP` 처리해 뒤 코드가 안 깨진다.
+
+### 4단계 — 실행 & 확인
+
+- `F9`로 실행. 화면을 지우는 프레임마다 `glClearColor(1,0,0,1)`가 먼저 걸려 **배경이 빨갛게** 나오면 후킹 성공.
+- 색을 바꾸려면 케이브의 push 값(float 비트패턴)만 수정: 초록 `red=0,green=1.0` 등.
+
+### 트러블슈팅
+
+- **게임이 죽는다** → 원래 glClear 호출 복원(9번 줄)을 빠뜨렸거나, 복귀 `jmp` 목적지를 잘못 잡음. 호출 명령 크기(다음 주소 계산)를 재확인.
+- **색이 안 변한다** → glClearColor 인자 순서(역순)나 float 비트패턴 오류. `push`한 게 정수 1이면 안 됨 — 반드시 `0x3F800000`.
+- **레지스터 꼬여 이상 동작** → `pushad/pushfd … popfd/popad` 감싸기 누락.
+- **호출부를 못 찾음** → glClear가 아니라 `glClearColor` 쪽에 BP를 걸어 리턴 주소로 찾아도 된다.
 
 ## 배운 것
 
